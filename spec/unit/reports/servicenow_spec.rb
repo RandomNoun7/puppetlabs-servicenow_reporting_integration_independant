@@ -28,7 +28,8 @@ describe 'ServiceNow report processor' do
       'instance'         => 'test_instance',
       'user'             => 'test_user',
       'password'         => 'test_password',
-      'oauth_token'      => 'test_token' }
+      'oauth_token'      => 'test_token',
+      'incident_creation_report_statuses' => ['failed', 'corrective_change'] }
   end
   let(:expected_credentials) do
     {
@@ -48,11 +49,38 @@ describe 'ServiceNow report processor' do
     allow(YAML).to receive(:load_file).with(%r{servicenow_reporting\.yaml}).and_return(settings_hash)
   end
 
-  context 'with report status: unchanged' do
-    context 'and noop_pending: false' do
+  context 'with default incident_creation_report_statuses' do
+    context 'with report status: unchanged' do
+      context 'and noop_pending: false' do
+        it 'does nothing' do
+          allow(processor).to receive(:status).and_return 'unchanged'
+          allow(processor).to receive(:noop_pending).and_return false
+
+          results = processor.process
+          # If the report processor returns false we know that the process
+          # method was exited early.
+          expect(results).to be false
+          expect(processor).not_to receive(:do_snow_request)
+        end
+      end
+
+      context 'and noop_pending: true' do
+        it 'does nothing' do
+          allow(processor).to receive(:status).and_return 'unchanged'
+          allow(processor).to receive(:noop_pending).and_return true
+
+          results = processor.process
+          # If the report processor returns false we know that the process
+          # method was exited early.
+          expect(results).to be false
+          expect(processor).not_to receive(:do_snow_request)
+        end
+      end
+    end
+
+    context 'with report status: changed (intentional)' do
       it 'does nothing' do
-        allow(processor).to receive(:status).and_return 'unchanged'
-        allow(processor).to receive(:noop_pending).and_return false
+        allow(processor).to receive(:status).and_return 'changed'
 
         results = processor.process
         # If the report processor returns false we know that the process
@@ -62,12 +90,24 @@ describe 'ServiceNow report processor' do
       end
     end
 
-    context 'and noop_pending: true' do
-      it 'creates incident' do
-        allow(processor).to receive(:status).and_return 'unchanged'
-        allow(processor).to receive(:noop_pending).and_return true
+    context 'with report status: changed (corrective)' do
+      it 'creates an incident' do
+        allow(processor).to receive(:status).and_return 'changed'
+        allow(processor).to receive(:corrective_change).and_return true
+
         expected_incident = {
-          short_description: short_description_regex('pending changes'),
+          short_description: short_description_regex('changed'),
+        }
+        expect_created_incident(expected_incident, expected_credentials)
+        processor.process
+      end
+    end
+
+    context 'with report status: failed' do
+      it 'creates incident' do
+        allow(processor).to receive(:status).and_return 'failed'
+        expected_incident = {
+          short_description: short_description_regex('failed'),
         }
         expect_created_incident(expected_incident, expected_credentials)
         processor.process
@@ -75,22 +115,105 @@ describe 'ServiceNow report processor' do
     end
   end
 
-  context 'with report status: changed' do
-    it 'creates incident' do
-      allow(processor).to receive(:status).and_return 'changed'
-      expected_incident = {
-        short_description: short_description_regex('changed'),
-      }
-      expect_created_incident(expected_incident, expected_credentials)
-      processor.process
+  context 'with noop reporting enabled' do
+    let(:settings_hash) do
+      super().merge('incident_creation_report_statuses' => ['failed', 'corrective_change', 'noop'])
+    end
+
+    context 'with report status: changed' do
+      it 'creates an incident when noop is true' do
+        allow(processor).to receive(:status).and_return 'changed'
+        allow(processor).to receive(:corrective_change).and_return true
+        allow(processor).to receive(:noop_pending).and_return true
+
+        expected_incident = {
+          short_description: short_description_regex('changed'),
+        }
+        expect_created_incident(expected_incident, expected_credentials)
+        processor.process
+      end
     end
   end
 
-  context 'with report status: failed' do
-    it 'creates incident' do
-      allow(processor).to receive(:status).and_return 'failed'
+  context 'with intentional change reporting enabled' do
+    let(:settings_hash) do
+      super().merge('incident_creation_report_statuses' => ['intentional_change'])
+    end
+
+    context 'with report status: changed (corrective)' do
+      it 'does nothing' do
+        allow(processor).to receive(:status).and_return 'changed'
+        allow(processor).to receive(:corrective_change).and_return true
+
+        results = processor.process
+        # If the report processor returns false we know that the process
+        # method was exited early.
+        expect(results).to be false
+        expect(processor).not_to receive(:do_snow_request)
+      end
+    end
+
+    context 'with report status: changed (intentional)' do
+      it 'creates an incident' do
+        allow(processor).to receive(:status).and_return 'changed'
+
+        expected_incident = {
+          short_description: short_description_regex('changed'),
+        }
+        expect_created_incident(expected_incident, expected_credentials)
+        processor.process
+      end
+    end
+  end
+
+  context 'with \'all\' events selected' do
+    let(:settings_hash) do
+      super().merge('incident_creation_report_statuses' => ['all'])
+    end
+
+    context 'with report status: changed (corrective)' do
+      it 'creates an event' do
+        allow(processor).to receive(:status).and_return 'changed'
+        allow(processor).to receive(:corrective_change).and_return true
+
+        expected_incident = {
+          short_description: short_description_regex('changed'),
+        }
+        expect_created_incident(expected_incident, expected_credentials)
+        processor.process
+      end
+    end
+
+    context 'with report status: changed (intentional)' do
+      it 'creates an incident' do
+        allow(processor).to receive(:status).and_return 'changed'
+
+        expected_incident = {
+          short_description: short_description_regex('changed'),
+        }
+        expect_created_incident(expected_incident, expected_credentials)
+        processor.process
+      end
+    end
+
+    context 'with report status: failed' do
+      it 'creates incident' do
+        allow(processor).to receive(:status).and_return 'failed'
+        expected_incident = {
+          short_description: short_description_regex('failed'),
+        }
+        expect_created_incident(expected_incident, expected_credentials)
+        processor.process
+      end
+    end
+
+    it 'creates an incident when noop is true' do
+      allow(processor).to receive(:status).and_return 'changed'
+      allow(processor).to receive(:corrective_change).and_return true
+      allow(processor).to receive(:noop_pending).and_return true
+
       expected_incident = {
-        short_description: short_description_regex('failed'),
+        short_description: short_description_regex('changed'),
       }
       expect_created_incident(expected_incident, expected_credentials)
       processor.process
@@ -100,6 +223,7 @@ describe 'ServiceNow report processor' do
   context 'receiving response code greater than 200' do
     it 'returns the response code from Servicenow' do
       allow(processor).to receive(:status).and_return 'changed'
+      allow(processor).to receive(:corrective_change).and_return true
 
       [300, 400, 500].each do |response_code|
         allow(processor).to receive(:do_snow_request).and_return(new_mock_response(response_code, { 'sys_id' => 'foo_sys_id' }.to_json))

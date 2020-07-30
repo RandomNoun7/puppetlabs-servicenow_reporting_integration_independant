@@ -87,13 +87,11 @@ module Puppet::Util::Servicenow
   end
   module_function :do_snow_request
 
-  
-
   def requested_status(reported_status, corrective_change, noop_pending)
-    report_types = settings['incident_report_types']
+    report_types = settings['incident_creation_report_statuses']
 
     if report_types.include? 'none'
-      Puppet.info('servicenow reporting: incident_report_types includes \'none\'.')
+      Puppet.info('servicenow reporting: incident_creation_report_statuses includes \'none\'.')
       return false
     elsif report_types.include? 'all'
       report_types = ['failed', 'corrective_change', 'intentional_change', 'noop']
@@ -110,7 +108,9 @@ module Puppet::Util::Servicenow
       Puppet.info('servicenow reporting: noop reporting disabled')
       return false
     elsif noop_pending && report_on_noop
-      # This branch is a problem. A noop run
+      # This branch is a problem. Currently, given the data available to report
+      # processors like ours, on noop runs, only corrective changes can generate
+      # incidents. An intentional change cannot be detected on a noop run.
       Puppet.info('servicenow reporting: noop reporting enabled')
       return reportable_change?(report_types, reported_status, corrective_change)
     else

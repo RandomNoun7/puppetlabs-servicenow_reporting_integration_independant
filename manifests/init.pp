@@ -31,7 +31,7 @@
 #  The sys_id of the user assigned to the incident as specified in the
 #  sys_user table. Note that if assignment_group is also specified, then
 #  this must correspond to a user who is a member of the assignment_group.
-# @params [Array[Enum['failed', 'corrective_change', 'intentional_change', 'all', 'none'], 1, 3]] incident_report_types
+# @params [Array[Enum['failed', 'corrective_change', 'intentional_change', 'all', 'none'], 1, 3]] incident_creation_report_statuses
 #   The kinds of reports that can trigger an incident to be sent to Servicenow.
 #   Choose any of ['failed', 'corrective_change', 'intentional_change', 'noop']
 #   You can also specify 'all' or use 'none' to turn off all incidents.
@@ -49,7 +49,7 @@ class servicenow_reporting_integration (
   Optional[Integer] $urgency            = undef,
   Optional[String[1]] $assignment_group = undef,
   Optional[String[1]] $assigned_to      = undef,
-  Array[Enum['failed', 'corrective_change', 'intentional_change', 'noop', 'all', 'none'], 1, 3]$incident_report_types = ['failed','corrective_change'],
+  Array[Enum['failed', 'corrective_change', 'intentional_change', 'noop', 'all', 'none'], 1, 3]$incident_creation_report_statuses = ['failed','corrective_change'],
 ) {
   # Warning: These values are parameterized here at the top of this file, but the
   # path to the yaml file is hard coded in the report processor
@@ -91,7 +91,7 @@ class servicenow_reporting_integration (
         urgency                   => $urgency,
         assignment_group          => $assignment_group,
         assigned_to               => $assigned_to,
-        incident_report_types     => $incident_report_types,
+        incident_creation_report_statuses     => $incident_creation_report_statuses,
         report_processor_checksum => $report_processor_checksum,
       }),
       notify  => $settings_file_notify,
