@@ -86,4 +86,50 @@ module Puppet::Util::Servicenow
     end
   end
   module_function :do_snow_request
+
+  
+
+  def requested_status(reported_status, corrective_change, noop_pending)
+    report_types = settings['incident_report_types']
+
+    if report_types.include? 'none'
+      Puppet.info('servicenow reporting: incident_report_types includes \'none\'.')
+      return false
+    elsif report_types.include? 'all'
+      report_types = ['failed', 'corrective_change', 'intentional_change', 'noop']
+    end
+
+    report_on_noop = report_types.include? 'noop'
+
+    if reported_status == 'failed' && report_types.include?('failed')
+      Puppet.info('servicenow reporting: decision: reportable failure')
+      return true
+    end
+
+    if noop_pending && !report_on_noop
+      Puppet.info('servicenow reporting: noop reporting disabled')
+      return false
+    elsif noop_pending && report_on_noop
+      # This branch is a problem. A noop run
+      Puppet.info('servicenow reporting: noop reporting enabled')
+      return reportable_change?(report_types, reported_status, corrective_change)
+    else
+      return reportable_change?(report_types, reported_status, corrective_change)
+    end
+  end
+  module_function :requested_status
+
+  def reportable_change?(report_types, reported_status, corrective_change)
+    reportable_change = false
+    if corrective_change && report_types.include?('corrective_change')
+      Puppet.info('servicenow reporting: decision: reportable corrective change')
+      reportable_change = true
+    elsif reported_status == 'changed' && !corrective_change && report_types.include?('intentional_change')
+      Puppet.info('servicenow reporting: decision: reportable intentional change')
+      reportable_change = true
+    end
+
+    reportable_change
+  end
+  module_function :reportable_change?
 end

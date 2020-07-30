@@ -6,7 +6,12 @@ Puppet::Reports.register_report(:servicenow) do
   include Puppet::Util::Servicenow
 
   def process
-    unless status != 'unchanged' || noop_pending
+    decision_parameters = "status: #{status}, "\
+                          "corrective_change: #{corrective_change}, "\
+                          "noop_pending: #{noop_pending}"
+    Puppet.info("servicenow reporting: decision parameters: #{decision_parameters}")
+
+    unless requested_status(status, corrective_change, noop_pending)
       # do not create an incident
       return false
     end
@@ -31,12 +36,16 @@ Puppet::Reports.register_report(:servicenow) do
 
     endpoint = "https://#{settings_hash['instance']}/api/now/table/incident"
 
+    Puppet.info("servicenow reporting: endpoint: #{endpoint}")
+
     response = do_snow_request(endpoint,
                                'Post',
                                incident_data,
                                user: settings_hash['user'],
                                password: settings_hash['password'],
                                oauth_token: settings_hash['oauth_token'])
+
+    Puppet.info('servicenow reporting: report sent.')
 
     raise "Incident creation failed. Error from #{endpoint} (status: #{response.code}): #{response.body}" if response.code.to_i >= 300
     return true
